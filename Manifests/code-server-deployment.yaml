@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: code-server-deployment
+  labels:
+    app: code-server-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: code-server-pod
+  template:
+    metadata:
+      labels:
+        app: code-server-pod
+    spec:
+      containers:
+      - name: code-server-container
+        image: docker.io/codercom/code-server:4.22.1-ubuntu
+        env:
+        - name: DOCKER_USER
+          value: user
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+          - name: config-code-server
+            mountPath: /home/coder/.config
+          - name: redis-storage
+            mountPath: /home/coder/project
+      volumes:
+      - name: config-code-server
+        emptyDir: {}
+      - name: redis-storage
+        emptyDir: {}
