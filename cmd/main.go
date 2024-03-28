@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	codeserver "kube-flow/internal/code-server"
+	"kube-flow/internal/state"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -13,21 +14,25 @@ import (
 func main() {
 
 	var (
-		kubeconfigPath string
-		kubeconfig     *string
-		choice         int
-		config         *rest.Config
-		clientset      *kubernetes.Clientset
-		deploymentName string
-		err            error
+		kubeconfigPath  string
+		kubeconfig      *string
+		choice          int
+		config          *rest.Config
+		clientset       *kubernetes.Clientset
+		deploymentName  string
+		namespace       string
+		labelProjet     string
+		labelCodeServer string
+		err             error
 	)
 
+	// This values need to be configure under .env and will be replace with values.yaml from the helm
+	namespace = "default"
+	labelProjet = "project=ethernetes"
+	labelCodeServer = "type=code-server"
+
 	kubeconfigPath = "./client.config"
-	// if home := homedir.HomeDir(); home != "" {
-	// 	kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
-	// } else {
-	// 	kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
-	// }
+
 	kubeconfig = flag.String("kubeconfig", kubeconfigPath, "absolute path")
 	flag.Parse()
 
@@ -42,27 +47,56 @@ func main() {
 
 	for {
 		fmt.Println("Choose what do u want to do:")
-		fmt.Println("1: Create code-server")
-		fmt.Println("2: Liste Deployment")
-		fmt.Println("3: Remove code-server")
+		fmt.Println("0: List all ressources from ethernetes")
+		fmt.Println("1: List all deployments from ethernetes")
+		fmt.Println("2: List all services from ethernetes")
+		fmt.Println("3: List all pods from ethernetes")
+		fmt.Println("7: Create code-server")
+		fmt.Println("8: List code-server Deployments")
+		fmt.Println("9: Remove code-server")
 
+		fmt.Print("\nYour choice: ")
 		fmt.Scanf("%d", &choice)
 		switch choice {
+		case 0:
+			fmt.Println("Going to List all ressources from ethernetes")
+			fmt.Println()
+			state.AllEthernetesRessources(clientset)
+			fmt.Println()
 		case 1:
-			fmt.Println("Going to Start Code Server")
-			codeserver.StartCodeServer(clientset)
+			fmt.Println("Going to List all ressources from ethernetes")
+			fmt.Println()
+			state.ListDeployments(clientset, namespace, labelProjet)
 			fmt.Println()
 		case 2:
-			fmt.Println("Going to List Code Server")
-			codeserver.ListCodeServers(clientset)
+			fmt.Println("Going to List all services from ethernetes")
+			fmt.Println()
+			state.ListServices(clientset, namespace, labelProjet)
 			fmt.Println()
 		case 3:
-			fmt.Println("Going to Delete Code Server")
+			fmt.Println("Going to List all pods from ethernetes")
+			fmt.Println()
+			state.ListPods(clientset, namespace, labelProjet)
+			fmt.Println()
+		case 7:
+			fmt.Println("Going to Start Code Server deploying a deployment + cluster ip service.")
+			fmt.Println()
+			codeserver.StartCodeServer(clientset, namespace, labelProjet)
+			fmt.Println()
+		case 8:
+			fmt.Println("Going to List Code Server")
+			fmt.Println()
+			codeserver.ListCodeServers(clientset, namespace, labelProjet+","+labelCodeServer)
+			fmt.Println()
+		case 9:
+			fmt.Println("Going to Delete a deployment")
 			fmt.Print("Enter the name of the deployment to delete: ")
 			fmt.Scanf("%s", &deploymentName)
 			fmt.Println("The value of deployment Name: ", deploymentName)
 			codeserver.StopCodeServer(clientset, deploymentName)
 			fmt.Println()
+		default:
+			fmt.Println("Choose a valid number")
 		}
 	}
 
