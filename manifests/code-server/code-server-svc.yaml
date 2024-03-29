@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: code-server-service
+  labels:
+    app: code-server-service
+    number: will_be_set_by_script
+    project: ethernetes
+spec:
+  type: ClusterIP
+  selector:
+    app: code-server-pod
+    number: will_be_set_by_script
+    project: ethernetes
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080

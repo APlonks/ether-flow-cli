@@ -3,17 +3,20 @@ package codeserver
 import (
 	"context"
 	"fmt"
+	"math/rand"
+	"os"
+	"path/filepath"
+	"strconv"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 
-	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
-
-	"kube-flow/internal/utils"
+	"k8s.io/client-go/kubernetes/scheme"
 )
 
 // TODO :
@@ -21,133 +24,86 @@ import (
 // - Also configure random number for labels completion
 // - Return the medata label of the pod to give it to the service
 // It is necessary to deploy more than one deployment
-func StartDeploymentCodeServer(clientset *kubernetes.Clientset) {
-	deploymentsClient := clientset.AppsV1().Deployments(apiv1.NamespaceDefault)
+func StartDeploymentCodeServer(clientset *kubernetes.Clientset, namespace string, randomNumber int) {
 
-	deployment := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "code-server-deployment",
-			Labels: map[string]string{
-				"app":     "code-server-deployment",
-				"project": "ethernetes",
-			},
-		},
-		Spec: appsv1.DeploymentSpec{
-			Replicas: utils.Int32Ptr(1),
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"app": "code-server-pod",
-				},
-			},
-			Template: apiv1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"app":     "code-server-pod",
-						"project": "ethernetes",
-					},
-				},
-				Spec: apiv1.PodSpec{
-					Containers: []apiv1.Container{
-						{
-							Name:  "code-server-container",
-							Image: "docker.io/codercom/code-server:4.22.1-ubuntu",
-							Env: []apiv1.EnvVar{
-								{
-									Name:  "DOCKER_USER",
-									Value: "user",
-								},
-							},
-							Ports: []apiv1.ContainerPort{
-								{
-									Name:          "http-code",
-									Protocol:      apiv1.ProtocolTCP,
-									ContainerPort: 8080,
-								},
-							},
-							Resources: apiv1.ResourceRequirements{
-								Limits: apiv1.ResourceList{
-									apiv1.ResourceMemory: resource.MustParse("256Mi"),
-									apiv1.ResourceCPU:    resource.MustParse("500m"),
-								},
-							},
-							VolumeMounts: []apiv1.VolumeMount{
-								{
-									Name:      "config-code-server",
-									MountPath: "/home/coder/.config",
-								},
-								{
-									Name:      "project-storage",
-									MountPath: "/home/coder/project",
-								},
-							},
-						},
-					},
-					Volumes: []apiv1.Volume{
-						{
-							Name: "config-code-server",
-							VolumeSource: apiv1.VolumeSource{
-								EmptyDir: &apiv1.EmptyDirVolumeSource{},
-							},
-						},
-						{
-							Name: "project-storage",
-							VolumeSource: apiv1.VolumeSource{
-								EmptyDir: &apiv1.EmptyDirVolumeSource{},
-							},
-						},
-					},
-				},
-			},
-		},
+	// Path to deployment YAML file
+	yamlFilepath := filepath.Join("./manifests/code-server/code-server-deployment.yaml")
+
+	// Read yaml file
+	yamlFile, err := os.ReadFile(yamlFilepath)
+	if err != nil {
+		fmt.Printf("Error reading YAML file: %s\n", err)
+		return
 	}
+
+	// Déserializer le fichier YAML dans un objet Deployment
+	// Créer un deserializer pour les objets Kubernetes à partir du schéma de client-go.
+	deserializer := serializer.NewCodecFactory(scheme.Scheme).UniversalDeserializer()
+
+	var deployment appsv1.Deployment
+	_, _, err = deserializer.Decode(yamlFile, nil, &deployment)
+	if err != nil {
+		fmt.Printf("Error decoding YAML to Deployment: %s\n", err)
+		return
+	}
+
+	// Update Deployment object
+	deploymentName := fmt.Sprintf("code-server-deployment-%d", randomNumber)
+	deployment.ObjectMeta.Name = deploymentName
+	deployment.ObjectMeta.Namespace = namespace
+	deployment.Labels["number"] = fmt.Sprintf("%d", randomNumber)
+	deployment.Spec.Template.ObjectMeta.Labels["number"] = fmt.Sprintf("%d", randomNumber)
 
 	// Create Deployment
-	fmt.Println("Creating deployment...")
-	result, err := deploymentsClient.Create(context.TODO(), deployment, metav1.CreateOptions{})
+	fmt.Printf("Creating deployment %s...\n", deploymentName)
+	deploymentsClient := clientset.AppsV1().Deployments(deployment.Namespace)
+	result, err := deploymentsClient.Create(context.TODO(), &deployment, metav1.CreateOptions{})
 	if err != nil {
-		fmt.Println("Error:", err)
-		fmt.Println("The deployment didn't work.")
+		fmt.Printf("Error creating/updating deployment: %s\n", err)
 		return
 	}
-	fmt.Printf("Deployment created %q.\n", result.GetObjectMeta().GetName())
+	fmt.Printf("Deployment %s created/updated.\n", result.GetObjectMeta().GetName())
 }
 
-func StartServiceCodeServer(clientset *kubernetes.Clientset) {
-	serviceName := "code-server-service"
+func StartServiceCodeServer(clientset *kubernetes.Clientset, namespace string, randomNumber int) (string, error) {
+	// Path to deployment YAML file
+	yamlFilepath := filepath.Join("./manifests/code-server/code-server-svc.yaml")
 
-	service := &apiv1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: serviceName,
-			Labels: map[string]string{
-				"app":     "code-server",
-				"project": "ethernetes",
-			},
-		},
-		Spec: apiv1.ServiceSpec{
-			Type: apiv1.ServiceTypeClusterIP,
-			Selector: map[string]string{
-				"app": "code-server-pod", // Label to select the pod
-			},
-			Ports: []apiv1.ServicePort{
-				{
-					Protocol:   apiv1.ProtocolTCP,
-					Port:       80,                   // Service's port
-					TargetPort: intstr.FromInt(8080), // Pod's port
-				},
-			},
-		},
+	// Read the YAML file
+	yamlFile, err := os.ReadFile(yamlFilepath)
+	if err != nil {
+		fmt.Printf("Error reading YAML file: %s\n", err)
+		return "", err
 	}
+
+	// Deserialize the YAML file into a Service object
+	deserializer := serializer.NewCodecFactory(scheme.Scheme).UniversalDeserializer()
+
+	var service apiv1.Service
+	_, _, err = deserializer.Decode(yamlFile, nil, &service)
+	if err != nil {
+		fmt.Printf("Error decoding YAML to Service: %s\n", err)
+		return "", err
+	}
+
+	serviceName := fmt.Sprintf("code-server-service-%d", randomNumber)
+	service.ObjectMeta.Name = serviceName
+	service.ObjectMeta.Namespace = namespace
+	service.Labels["number"] = fmt.Sprintf("%d", randomNumber)
+	service.Spec.Selector["number"] = fmt.Sprintf("%d", randomNumber)
 
 	fmt.Println("Creating service for code-server...")
-	result, err := clientset.CoreV1().Services(apiv1.NamespaceDefault).Create(context.TODO(), service, metav1.CreateOptions{})
+	result, err := clientset.CoreV1().Services(apiv1.NamespaceDefault).Create(context.TODO(), &service, metav1.CreateOptions{})
 	if err != nil {
 		fmt.Printf("Error creating service: %v\n", err)
-		return
+		return "", err
 	}
 	fmt.Printf("Service %q created.\n", result.GetObjectMeta().GetName())
+
+	return result.GetObjectMeta().GetName(), err
 }
 
-func UpdateIngressCodeServer(clientset *kubernetes.Clientset, ingressName, namespace, serviceName, hostName string) {
+func UpdateIngressCodeServer(clientset *kubernetes.Clientset, namespace string, randomNumber int, ingressName, serviceName string) {
 	// Retrieve the ingress
 	ingressClient := clientset.NetworkingV1().Ingresses(namespace)
 	ingress, err := ingressClient.Get(context.TODO(), ingressName, metav1.GetOptions{})
@@ -160,12 +116,12 @@ func UpdateIngressCodeServer(clientset *kubernetes.Clientset, ingressName, names
 
 	// New rule created
 	newRule := networkingv1.IngressRule{
-		Host: hostName,
+		Host: "code-server-" + strconv.FormatInt(int64(randomNumber), 10),
 		IngressRuleValue: networkingv1.IngressRuleValue{
 			HTTP: &networkingv1.HTTPIngressRuleValue{
 				Paths: []networkingv1.HTTPIngressPath{
 					{
-						Path:     "/code-server",
+						Path:     "/",
 						PathType: &pathType,
 						Backend: networkingv1.IngressBackend{
 							Service: &networkingv1.IngressServiceBackend{
@@ -195,9 +151,18 @@ func UpdateIngressCodeServer(clientset *kubernetes.Clientset, ingressName, names
 }
 
 func StartCodeServer(clientset *kubernetes.Clientset, namespace, labelSelector string) {
-	StartDeploymentCodeServer(clientset)
-	StartServiceCodeServer(clientset)
-	UpdateIngressCodeServer(clientset, "myingress", namespace, "code-server-service", "code-server")
+	randInstance := rand.New(rand.NewSource(time.Now().UnixNano()))
+	randomNumber := randInstance.Intn(1000)
+
+	StartDeploymentCodeServer(clientset, namespace, randomNumber)
+
+	serviceName, err := StartServiceCodeServer(clientset, namespace, randomNumber)
+	if err != nil {
+		fmt.Println("Error in function StartServiceCodeServer")
+		return
+	}
+
+	UpdateIngressCodeServer(clientset, namespace, randomNumber, "myingress", serviceName)
 }
 
 func ListCodeServers(clientset *kubernetes.Clientset, namespace, labelSelector string) {
@@ -218,7 +183,7 @@ func ListCodeServers(clientset *kubernetes.Clientset, namespace, labelSelector s
 
 // TODO :
 // - Delete the service
-// - Update de the ingress
+// - Update de the ingress -> delete the rule
 func StopCodeServer(clientset *kubernetes.Clientset, deploymentName string) {
 	fmt.Println("Deleting deployment...")
 	deploymentsClient := clientset.AppsV1().Deployments(apiv1.NamespaceDefault)

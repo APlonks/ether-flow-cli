@@ -4,6 +4,8 @@ metadata:
   name: code-server-deployment
   labels:
     app: code-server-deployment
+    number: will_be_set_by_script
+    project: ethernetes
 spec:
   replicas: 1
   selector:
@@ -13,24 +15,28 @@ spec:
     metadata:
       labels:
         app: code-server-pod
+        number: will_be_set_by_script
+        project: ethernetes
     spec:
       containers:
       - name: code-server-container
         image: docker.io/codercom/code-server:4.22.1-ubuntu
         env:
         - name: DOCKER_USER
-          value: user
+          value: "user"
         ports:
-        - containerPort: 8080
+        - name: http-code
+          containerPort: 8080
+          protocol: TCP
         resources:
           limits:
             memory: "256Mi"
             cpu: "500m"
         volumeMounts:
-          - name: config-code-server
-            mountPath: /home/coder/.config
-          - name: project-storage
-            mountPath: /home/coder/project
+        - name: config-code-server
+          mountPath: /home/coder/.config
+        - name: project-storage
+          mountPath: /home/coder/project
       volumes:
       - name: config-code-server
         emptyDir: {}
