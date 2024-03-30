@@ -13,6 +13,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	v1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
@@ -273,7 +274,16 @@ func ListCodeServers(clientset *kubernetes.Clientset, namespace, labelSelector s
 // TODO :
 // - Delete the service
 // - Update de the ingress -> delete the rule
-func StopCodeServer(clientset *kubernetes.Clientset, deploymentName string) {
+func StopCodeServer(clientset *kubernetes.Clientset, namespace string, codeServerNumber int) {
+
+	deleteDeploymentCodeServer(clientset, namespace, "code-server-deployment-"+strconv.FormatInt(int64(codeServerNumber), 10))
+
+	deleteServiceCodeServer(clientset, namespace, "code-server-service-"+strconv.FormatInt(int64(codeServerNumber), 10))
+
+	deleteIngressRule(clientset, namespace, "myingress", "code-server-"+strconv.FormatInt(int64(codeServerNumber), 10))
+}
+
+func deleteDeploymentCodeServer(clientset *kubernetes.Clientset, namespace string, deploymentName string) {
 	fmt.Println("Deleting deployment...")
 	deploymentsClient := clientset.AppsV1().Deployments(apiv1.NamespaceDefault)
 	deletePolicy := metav1.DeletePropagationForeground
@@ -281,8 +291,56 @@ func StopCodeServer(clientset *kubernetes.Clientset, deploymentName string) {
 		PropagationPolicy: &deletePolicy,
 	}); err != nil {
 		fmt.Println("Error:", err)
-		fmt.Println("Problem while trying to delete the deployment :", deploymentName)
+		fmt.Println("Problem while trying to delete the code server :", deploymentName)
 		return
 	}
 	fmt.Println("Deleted deployment.")
+}
+
+func deleteServiceCodeServer(clientset *kubernetes.Clientset, namespace string, serviceName string) {
+	fmt.Printf("Deleting service %s...\n", serviceName)
+	serviceClient := clientset.CoreV1().Services(namespace)
+
+	deletePolicy := metav1.DeletePropagationForeground
+	if err := serviceClient.Delete(context.TODO(), serviceName, metav1.DeleteOptions{
+		PropagationPolicy: &deletePolicy,
+	}); err != nil {
+		fmt.Printf("Error while trying to delete the service %s: %v\n", serviceName, err)
+		return
+	}
+
+	fmt.Printf("Service %s deleted successfully.\n", serviceName)
+}
+
+func deleteIngressRule(clientset *kubernetes.Clientset, namespace, ingressName, hostToFind string) error {
+	// Récupérer l'objet Ingress
+	ingress, err := clientset.NetworkingV1().Ingresses(namespace).Get(context.TODO(), ingressName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get ingress: %v", err)
+	}
+
+	// Parcourir les règles pour trouver et supprimer la règle correspondant à l'hôte
+	newRules := []v1.IngressRule{}
+	for _, rule := range ingress.Spec.Rules {
+		if rule.Host != hostToFind {
+			newRules = append(newRules, rule) // Conserver les règles qui ne correspondent pas
+		}
+	}
+
+	// Si la longueur des règles est inchangée, l'hôte n'a pas été trouvé
+	if len(newRules) == len(ingress.Spec.Rules) {
+		return fmt.Errorf("host %s not found in ingress rules", hostToFind)
+	}
+
+	// Mettre à jour les règles dans l'objet Ingress
+	ingress.Spec.Rules = newRules
+
+	// Mettre à jour l'Ingress dans le cluster
+	_, err = clientset.NetworkingV1().Ingresses(namespace).Update(context.TODO(), ingress, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to update ingress after deleting rule: %v", err)
+	}
+
+	fmt.Printf("Ingress rule for host %s deleted successfully from %s.\n", hostToFind, ingressName)
+	return nil
 }

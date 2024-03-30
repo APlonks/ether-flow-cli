@@ -14,16 +14,16 @@ import (
 func main() {
 
 	var (
-		kubeconfigPath  string
-		kubeconfig      *string
-		choice          int
-		config          *rest.Config
-		clientset       *kubernetes.Clientset
-		deploymentName  string
-		namespace       string
-		labelProjet     string
-		labelCodeServer string
-		err             error
+		kubeconfigPath   string
+		kubeconfig       *string
+		choice           int
+		config           *rest.Config
+		clientset        *kubernetes.Clientset
+		codeServerNumber int
+		namespace        string
+		labelProjet      string
+		labelCodeServer  string
+		err              error
 	)
 
 	// This values need to be configure under .env and will be replace with values.yaml from the helm
@@ -91,9 +91,9 @@ func main() {
 		case 9:
 			fmt.Println("Going to Delete a deployment")
 			fmt.Print("Enter the name of the deployment to delete: ")
-			fmt.Scanf("%s", &deploymentName)
-			fmt.Println("The value of deployment Name: ", deploymentName)
-			codeserver.StopCodeServer(clientset, deploymentName)
+			fmt.Scanf("%d", &codeServerNumber)
+			fmt.Println("The value of deployment Name: ", codeServerNumber)
+			codeserver.StopCodeServer(clientset, namespace, codeServerNumber)
 			fmt.Println()
 		default:
 			fmt.Println("Choose a valid number")
