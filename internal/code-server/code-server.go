@@ -1,6 +1,7 @@
 package codeserver
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math/rand"
@@ -13,10 +14,13 @@ import (
 	apiv1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/remotecommand"
 )
 
 // TODO :
@@ -150,7 +154,82 @@ func UpdateIngressCodeServer(clientset *kubernetes.Clientset, namespace string, 
 	fmt.Printf("Ingress %q updated with new rule for service %q.\n", updatedIngress.Name, serviceName)
 }
 
-func StartCodeServer(clientset *kubernetes.Clientset, namespace, labelSelector string) {
+func RetrieveDataCodeServer(clientset *kubernetes.Clientset, namespace string, randomNumber int, config *rest.Config) (string, error) {
+
+	fmt.Println("1")
+
+	// Construire un sélecteur de labels pour trouver le Pod spécifique
+	labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{"number": fmt.Sprintf("%d", randomNumber)}}
+	listOptions := metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()}
+
+	// Trouver le Pod en utilisant le sélecteur de labels
+	pods, err := clientset.CoreV1().Pods(namespace).List(context.TODO(), listOptions)
+	if err != nil {
+		fmt.Printf("Error listing pods: %v\n", err)
+		return "", err
+	}
+
+	if len(pods.Items) == 0 {
+		return "", fmt.Errorf("no pods found with the 'number' label set to %d", randomNumber)
+	}
+
+	fmt.Println("2")
+
+	// Utiliser le premier Pod pour l'exemple
+	podName := pods.Items[0].Name
+
+	// La commande à exécuter dans le conteneur.
+	cmd := []string{"cat", "/home/coder/.config/code-server/config.yaml"}
+	// containerName := pods.Items[0].Spec.Containers[0].Name // Supposer le premier conteneur
+
+	// Configuration pour l'exécution de la commande
+	req := clientset.CoreV1().RESTClient().
+		Post().
+		Resource("pods").
+		Name(podName).
+		Namespace(namespace).
+		SubResource("exec").
+		VersionedParams(&apiv1.PodExecOptions{
+			Command: cmd,
+			// Container: containerName,
+			Stdin:  false,
+			Stdout: true,
+			Stderr: true,
+			// TTY:    true,
+		}, scheme.ParameterCodec)
+
+	fmt.Println("3")
+
+	exec, err := remotecommand.NewSPDYExecutor(config, "POST", req.URL())
+	if err != nil {
+		fmt.Printf("Error while creating SPDYExecutor: %v\n", err)
+		return "", err
+	}
+
+	fmt.Println("4")
+
+	// Buffers pour capturer les sorties standard et d'erreur
+	var stdout, stderr bytes.Buffer
+	// Calling Sleep method
+	time.Sleep(1 * time.Second)
+	err = exec.StreamWithContext(context.TODO(), remotecommand.StreamOptions{
+		Stdout: &stdout,
+		Stderr: &stderr,
+	})
+	if err != nil {
+		fmt.Printf("Error in exec.Stream: %v\n", err)
+		return "", err
+	}
+
+	fmt.Println("5")
+
+	fmt.Printf("Command output:\nSTDOUT: %s\nSTDERR: %s\n", stdout.String(), stderr.String())
+
+	// Retourner la sortie standard comme résultat
+	return stdout.String(), nil
+}
+
+func StartCodeServer(clientset *kubernetes.Clientset, namespace, labelSelector string, config *rest.Config) {
 	randInstance := rand.New(rand.NewSource(time.Now().UnixNano()))
 	randomNumber := randInstance.Intn(1000)
 
@@ -163,6 +242,16 @@ func StartCodeServer(clientset *kubernetes.Clientset, namespace, labelSelector s
 	}
 
 	UpdateIngressCodeServer(clientset, namespace, randomNumber, "myingress", serviceName)
+
+	// Calling Sleep method
+	time.Sleep(5 * time.Second)
+
+	// Printed after sleep is over
+	fmt.Println("Sleep Over.....")
+
+	RetrieveDataCodeServer(clientset, namespace, randomNumber, config)
+	fmt.Println("Done")
+
 }
 
 func ListCodeServers(clientset *kubernetes.Clientset, namespace, labelSelector string) {

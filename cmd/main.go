@@ -81,7 +81,7 @@ func main() {
 		case 7:
 			fmt.Println("Going to Start Code Server deploying a deployment + cluster ip service.")
 			fmt.Println()
-			codeserver.StartCodeServer(clientset, namespace, labelProjet)
+			codeserver.StartCodeServer(clientset, namespace, labelProjet, config)
 			fmt.Println()
 		case 8:
 			fmt.Println("Going to List Code Server")
@@ -99,16 +99,6 @@ func main() {
 			fmt.Println("Choose a valid number")
 		}
 	}
-
-	// codeserver.StartCodeServer(clientset)
-
-	// // List Deployments
-	// prompt()
-	// codeserver.ListCodeServers(clientset)
-
-	// Delete Deployment
-	// prompt()
-
 }
 
 // func prompt() {
