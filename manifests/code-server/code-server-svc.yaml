@@ -12,6 +12,7 @@ spec:
     app: code-server-pod
     number: will_be_set_by_script
     project: ethernetes
+    type: code-server
   ports:
     - protocol: TCP
       port: 80

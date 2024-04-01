@@ -230,7 +230,7 @@ func RetrieveDataCodeServer(clientset *kubernetes.Clientset, namespace string, r
 	return stdout.String(), nil
 }
 
-func StartCodeServer(clientset *kubernetes.Clientset, namespace, labelSelector string, config *rest.Config) {
+func StartCodeServer(clientset *kubernetes.Clientset, namespace string, config *rest.Config) {
 	randInstance := rand.New(rand.NewSource(time.Now().UnixNano()))
 	randomNumber := randInstance.Intn(1000)
 
